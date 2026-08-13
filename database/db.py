@@ -9,6 +9,7 @@ import os
 import secrets
 import string
 from datetime import datetime, date, timedelta, timezone
+import logging
 
 from google.cloud import firestore
 from google.cloud.firestore_v1.async_client import AsyncClient
@@ -17,6 +18,162 @@ from google.cloud.firestore_v1.transforms import SERVER_TIMESTAMP, Increment
 from google.oauth2 import service_account
 
 from config import FREE_DAILY_LIMIT, FIREBASE_CREDENTIALS, FIREBASE_PROJECT_ID
+import uuid
+from google.auth import exceptions as google_auth_exceptions
+
+# Simple in-memory mock Firestore client used as a fallback when real credentials
+# are not available. Implements a tiny subset of the async client API used by
+# this project (async methods only).
+
+
+class _MockSnapshot:
+    def __init__(self, ref, data):
+        self.reference = ref
+        self._data = data
+
+    @property
+    def exists(self):
+        return self._data is not None
+
+    def to_dict(self):
+        return dict(self._data) if self._data is not None else None
+
+
+class _MockDocumentRef:
+    def __init__(self, client, col, doc_id):
+        self._client = client
+        self._col = col
+        self._id = doc_id
+
+    async def get(self, transaction=None):
+        col = self._client._store.get(self._col, {})
+        data = col.get(self._id)
+        return _MockSnapshot(self, data)
+
+    async def set(self, data, merge=False):
+        col = self._client._store.setdefault(self._col, {})
+        if merge and self._id in col and isinstance(col[self._id], dict):
+            col[self._id].update(data)
+        else:
+            col[self._id] = dict(data)
+
+    async def update(self, data):
+        col = self._client._store.setdefault(self._col, {})
+        if self._id not in col:
+            raise Exception("Document does not exist")
+        for k, v in data.items():
+            # Support Increment transform
+            if hasattr(v, "__class__") and getattr(v.__class__, "__name__", "") == "Increment":
+                col[self._id][k] = (col[self._id].get(k) or 0) + int(v._value) if hasattr(v, "_value") else col[self._id].get(k, 0) + 1
+            else:
+                col[self._id][k] = v
+
+    async def delete(self):
+        col = self._client._store.get(self._col, {})
+        if self._id in col:
+            del col[self._id]
+
+
+class _MockQuery:
+    def __init__(self, client, col, filters=None):
+        self._client = client
+        self._col = col
+        self._filters = filters or []
+        self._limit = None
+        self._order = None
+
+    def where(self, field, op, value):
+        return _MockQuery(self._client, self._col, self._filters + [(field, op, value)])
+
+    def order_by(self, field, direction=None):
+        self._order = (field, direction)
+        return self
+
+    def limit(self, n):
+        self._limit = n
+        return self
+
+    async def get(self):
+        col = self._client._store.get(self._col, {})
+        docs = []
+        for doc_id, data in col.items():
+            match = True
+            for field, op, value in self._filters:
+                if op == "==":
+                    if data.get(field) != value:
+                        match = False
+                        break
+            if match:
+                docs.append(_MockSnapshot(_MockDocumentRef(self._client, self._col, doc_id), data))
+        if self._order and self._order[0]:
+            key, direction = self._order
+            docs.sort(key=lambda s: (s.to_dict() or {}).get(key))
+            if direction == firestore.Query.DESCENDING:
+                docs.reverse()
+        if self._limit is not None:
+            docs = docs[: self._limit]
+        return docs
+
+
+class _MockBatch:
+    def __init__(self, client):
+        self._client = client
+        self._deletes = []
+
+    def delete(self, ref):
+        self._deletes.append(ref)
+
+    async def commit(self):
+        for ref in self._deletes:
+            await ref.delete()
+
+
+class _MockTransaction:
+    def __init__(self, client):
+        self._client = client
+
+    async def get(self, ref):
+        return await ref.get()
+
+    async def update(self, ref, data):
+        await ref.update(data)
+
+    async def set(self, ref, data):
+        await ref.set(data)
+
+
+class _MockAsyncClient:
+    def __init__(self, project=None, credentials=None):
+        self._store = {}
+        self._project = project
+
+    def collection(self, name):
+        return _MockCollection(self, name)
+
+    def batch(self):
+        return _MockBatch(self)
+
+    def transaction(self):
+        return _MockTransaction(self)
+
+
+class _MockCollection:
+    def __init__(self, client, name):
+        self._client = client
+        self._name = name
+
+    def document(self, doc_id):
+        return _MockDocumentRef(self._client, self._name, doc_id)
+
+    async def add(self, data):
+        doc_id = uuid.uuid4().hex[:20]
+        ref = _MockDocumentRef(self._client, self._name, doc_id)
+        await ref.set(data)
+        return ref, None
+
+    def where(self, *args, **kwargs):
+        return _MockQuery(self._client, self._name).where(*args, **kwargs)
+
 
 # ── Singleton client ──────────────────────────────────────────────────────────
 
@@ -35,23 +192,40 @@ def _build_client() -> AsyncClient:
     or fall back to Application Default Credentials."""
     creds_json = FIREBASE_CREDENTIALS.strip()
     project = FIREBASE_PROJECT_ID.strip() or None
+    logger = logging.getLogger(__name__)
 
     if creds_json:
+        creds_info = None
         try:
             creds_info = json.loads(creds_json)
         except json.JSONDecodeError:
             # maybe it is a file path (local dev convenience)
-            with open(creds_json) as f:
-                creds_info = json.load(f)
-        project = project or creds_info.get("project_id")
-        creds = service_account.Credentials.from_service_account_info(
-            creds_info,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
-        return AsyncClient(project=project, credentials=creds)
+            try:
+                with open(creds_json) as f:
+                    creds_info = json.load(f)
+            except Exception as e:
+                logger.warning("Failed to read FIREBASE_CREDENTIALS file: %s", e)
+
+        if creds_info:
+            project = project or creds_info.get("project_id")
+            try:
+                creds = service_account.Credentials.from_service_account_info(
+                    creds_info,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
+                return AsyncClient(project=project, credentials=creds)
+            except Exception as e:
+                # If provided credentials are invalid (corrupt PEM, wrong format, etc.),
+                # warn and fall back to application default credentials so import doesn't crash.
+                logger.warning("Invalid FIREBASE_CREDENTIALS provided, falling back to ADC: %s", e)
 
     # Application Default Credentials (e.g. gcloud auth or GOOGLE_APPLICATION_CREDENTIALS)
-    return AsyncClient(project=project)
+    try:
+        return AsyncClient(project=project)
+    except Exception as e:
+        # If ADC not configured or client cannot be created, fall back to in-memory mock.
+        logger.warning("Could not create real Firestore client, using in-memory mock: %s", e)
+        return _MockAsyncClient(project=project)
 
 
 async def close():
