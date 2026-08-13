@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>damxd shop | Vendor Console</title>
+    <!-- Import Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Modular Stylesheets -->
+    <link rel="stylesheet" href="assets/css/theme.css">
+    <link rel="stylesheet" href="assets/css/admin.css">
+</head>
+
+<body>
+
+    <!-- Guard Check -->
+    <script>
+        const session = JSON.parse(localStorage.getItem('nexus_session'));
+        if (!session || session.role !== 'admin') {
+            window.location.href = '/login';
+        }
+    </script>
+
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-user-shield"></i> Damxd <span>Control</span>
+            </div>
+            <div class="nav-actions">
+                <span style="font-size: 13px; color: var(--text-muted);"><i class="fa-solid fa-user"></i> Vendor: <strong id="adminUsername" style="color:#fff;">Admin</strong></span>
+                <button class="btn" id="headerConnectionStatus" style="font-family: var(--font-mono); font-size: 11px; border-color: rgba(0, 255, 102, 0.2); background: rgba(0, 255, 102, 0.03); color: #00ff66;">
+                    <span style="display:inline-block; width:8px; height:8px; background:#00ff66; border-radius:50%; margin-right:6px; box-shadow: 0 0 8px #00ff66;"></span>Connecting...
+                </button>
+                <a href="index.html" class="btn"><i class="fa-solid fa-shop"></i> View Shop</a>
+                <button class="btn btn-accent" id="logoutBtn"><i class="fa-solid fa-sign-out-alt"></i> Log Out</button>
+            </div>
+        </header>
+
+        <!-- DASHBOARD BODY -->
+        <main class="dashboard-panel">
+            <h2 style="font-family: var(--font-display); margin-bottom: 25px;"><i class="fa-solid fa-sliders"></i> Vendor Control Panel</h2>
+            
+            <!-- Analytics stats grid -->
+            <div class="dashboard-stats-grid">
+                <div class="stat-card-box">
+                    <label>Sales Volume</label>
+                    <span id="salesCounter">$0.00</span>
+                </div>
+                <div class="stat-card-box">
+                    <label>Listings Sold</label>
+                    <span id="soldCounter">0</span>
+                </div>
+                <div class="stat-card-box">
+                    <label>Active listings</label>
+                    <span id="listingsCounter">0</span>
+                </div>
+                <div class="stat-card-box">
+                    <label>Average Card Price</label>
+                    <span id="avgPriceCounter">$0.00</span>
+                </div>
+            </div>
+
+            <!-- TABS -->
+            <div class="checkout-tabs">
+                <button class="tab-btn active" id="tabInventoryBtn">Active Inventory</button>
+                <button class="tab-btn" id="tabAddListingBtn">Create Card Listing</button>
+                <button class="tab-btn" id="tabWalletManagerBtn">Wallet Manager / Approvals</button>
+                <button class="tab-btn" id="tabUsersBtn"><i class="fa-solid fa-users"></i> User Control</button>
+            </div>
+
+            <!-- ACTIVE INVENTORY LIST -->
+            <div id="inventoryPanel">
+                <div style="overflow-x: auto; max-height: 400px;">
+                    <table class="inventory-list-table">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>BIN</th>
+                                <th>Price</th>
+                                <th>Health</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody">
+                            <!-- Injected rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- CREATE LISTING FORM -->
+            <div id="addListingPanel" style="display: none;">
+                <form id="newListingForm">
+                    <div class="details-grid-wrapper">
+                        <div class="form-row">
+                            <label for="prodName">Card Product Name</label>
+                            <input type="text" id="prodName" class="form-control-input" placeholder="e.g. Visa Premium Gold" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="prodPrice">Price ($USD)</label>
+                            <input type="number" id="prodPrice" class="form-control-input" placeholder="e.g. 50" min="1" required />
+                        </div>
+                    </div>
+
+                    <div class="details-grid-wrapper">
+                        <div class="form-row">
+                            <label for="prodBrand">Card Network</label>
+                            <select id="prodBrand" class="form-control-input">
+                                <option value="Visa">Visa</option>
+                                <option value="Mastercard">Mastercard</option>
+                                <option value="Amex">Amex</option>
+                                <option value="Discover">Discover</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="prodTier">Tier Category</label>
+                            <select id="prodTier" class="form-control-input">
+                                <option value="Classic">Classic</option>
+                                <option value="Gold">Gold</option>
+                                <option value="Platinum">Platinum</option>
+                                <option value="Black">Black</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="details-grid-wrapper">
+                        <div class="form-row">
+                            <label for="prodBin">BIN code (6-digit)</label>
+                            <input type="text" id="prodBin" class="form-control-input" placeholder="e.g. 411132" maxlength="6" pattern="\d{6}" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="prodCountry">ISO Country Code</label>
+                            <input type="text" id="prodCountry" class="form-control-input" placeholder="e.g. US" maxlength="2" required />
+                        </div>
+                    </div>
+
+                    <div class="details-grid-wrapper">
+                        <div class="form-row">
+                            <label for="prodLimit">Limit ($)</label>
+                            <input type="number" id="prodLimit" class="form-control-input" placeholder="e.g. 8000" min="1" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="prodHealth">Success Health Rating (%)</label>
+                            <input type="number" id="prodHealth" class="form-control-input" placeholder="e.g. 98" min="10" max="100" required />
+                        </div>
+                    </div>
+
+                    <div class="details-grid-wrapper">
+                        <div class="form-row">
+                            <label for="prodBillName">Billing Cardholder Name</label>
+                            <input type="text" id="prodBillName" class="form-control-input" placeholder="e.g. John Doe" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="prodBillAddress">Billing Street Address</label>
+                            <input type="text" id="prodBillAddress" class="form-control-input" placeholder="e.g. 123 Main St" required />
+                        </div>
+                    </div>
+
+                    <div class="details-grid-wrapper">
+                        <div class="form-row">
+                            <label for="prodBillCityStateZip">Billing City, State, Zip</label>
+                            <input type="text" id="prodBillCityStateZip" class="form-control-input" placeholder="e.g. New York, NY 10001" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="prodBillPhone">Billing Phone Number</label>
+                            <input type="text" id="prodBillPhone" class="form-control-input" placeholder="e.g. +1-212-555-0143" required />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="prodDesc">Description</label>
+                        <input type="text" id="prodDesc" class="form-control-input" placeholder="e.g. Business class high limit European card" required />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 14px;">Publish Card Listing</button>
+                </form>
+            </div>
+
+            <!-- WALLET MANAGER PANEL -->
+            <div id="walletManagerPanel" style="display: none;">
+                <div class="details-grid-wrapper" style="margin-bottom: 25px; gap: 20px;">
+                    <div class="detail-card-panel" style="padding: 20px; flex: 1;">
+                        <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--primary);">Manual Credit Approval</h3>
+                        <p style="color: var(--text-muted); font-size: 12.5px; margin-bottom: 15px; line-height: 1.5;">
+                            When users send payment screenshots to <strong style="color:#fff;">@damxd89</strong> on Telegram, verify the transaction on the block explorer and credit their wallet here.
+                        </p>
+                        <form id="adminCreditWalletForm">
+                            <div class="form-row">
+                                <label for="creditUsername">Target Username</label>
+                                <input type="text" id="creditUsername" class="form-control-input" placeholder="Enter exact username to credit" required />
+                            </div>
+                            <div class="form-row">
+                                <label for="creditAmount">Amount to Credit ($USD)</label>
+                                <input type="number" id="creditAmount" class="form-control-input" placeholder="e.g. 100" min="1" step="0.01" required />
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px;"><i class="fa-solid fa-square-plus"></i> Approve & Credit Wallet</button>
+                        </form>
+                    </div>
+                    
+                    <div class="detail-card-panel" style="padding: 20px; flex: 1;">
+                        <h3 style="font-size: 15px; margin-bottom: 12px;">Active Wallet Balances</h3>
+                        <div style="overflow-x: auto;">
+                            <table class="inventory-list-table" style="font-size: 13px;">
+                                <thead>
+                                    <tr>
+                                        <th>User Account</th>
+                                        <th>Role</th>
+                                        <th>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminWalletBalancesBody">
+                                    <!-- Injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- USER CONTROL PANEL -->
+            <div id="usersPanel" style="display: none;">
+                <h3 style="font-size: 15px; margin-bottom: 18px; color: var(--primary);"><i class="fa-solid fa-users-gear"></i> Registered User Management</h3>
+                <p style="color: var(--text-muted); font-size: 12.5px; margin-bottom: 20px; line-height: 1.5;">
+                    View, manage, and delete registered buyer accounts. Reset wallet balances if needed.
+                </p>
+                <div style="overflow-x: auto;">
+                    <table class="inventory-list-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Balance</th>
+                                <th>Recovery Codes</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <!-- Injected dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+
+
+    <!-- CONNECTION GATEWAYS CONFIG MODAL -->
+    <div class="modal-overlay" id="connectionModal">
+        <div class="modal-card modal-panel" style="max-width: 500px;">
+            <button class="modal-close-btn" id="closeConnectionBtn"><i class="fa-solid fa-xmark"></i></button>
+            <div class="modal-body modal-content-area">
+                <h2 style="font-family: var(--font-display); margin-bottom: 20px;"><i class="fa-solid fa-network-wired"></i> Connection Gateways</h2>
+                <p style="color:var(--text-muted); font-size:13px; margin-bottom:20px;">Optimize routing paths to access different server gateways, encrypt transactions, and manage data nodes.</p>
+
+                <div class="detail-card-panel" style="margin-bottom: 20px;">
+                    <label>Active Endpoint</label>
+                    <span id="connActiveNode" style="color:var(--primary); font-size: 16px;">Primary Gateway</span>
+                    <div class="details-grid-wrapper" style="margin: 10px 0 0 0; gap: 10px;">
+                        <div>
+                            <span style="font-size:11px; color:var(--text-muted);">Latency:</span>
+                            <span id="connLatency" style="font-size:11px; font-family:var(--font-mono); color:#fff;">32 ms</span>
+                        </div>
+                        <div>
+                            <span style="font-size:11px; color:var(--text-muted);">Protocol:</span>
+                            <span id="connProtocol" style="font-size:11px; color:#fff;">SSL/TLS</span>
+                        </div>
+                    </div>
+                    <div style="font-size:11px; color:var(--text-muted); margin-top: 5px;">
+                        Status: <span id="connPeers" style="color:#00ff66;">14 active peers</span>
+                    </div>
+                </div>
+
+                <label style="display:block; font-size:12px; color:var(--text-muted); text-transform:uppercase; margin-bottom:10px; letter-spacing:0.5px;">Switch Endpoint Gateways</label>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <button class="btn conn-option-btn" data-node="Primary Gateway" style="justify-content:space-between; width:100%; text-align:left;">
+                        <span>Primary Gateway (SSL/TLS)</span>
+                        <span style="font-family:var(--font-mono); color:var(--primary);">~32ms</span>
+                    </button>
+                    <button class="btn conn-option-btn" data-node="Backup Node" style="justify-content:space-between; width:100%; text-align:left;">
+                        <span>Backup Node (Escrow Mirror)</span>
+                        <span style="font-family:var(--font-mono); color:var(--primary);">~75ms</span>
+                    </button>
+                    <button class="btn conn-option-btn" data-node="Tor Onion Route" style="justify-content:space-between; width:100%; text-align:left;">
+                        <span>Tor Onion Route (End-to-End PGP)</span>
+                        <span style="font-family:var(--font-mono); color:var(--primary);">~150ms</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Modular JS scripts -->
+    <script src="assets/js/state.js"></script>
+    <script src="assets/js/admin.js"></script>
+</body>
+
+</html>

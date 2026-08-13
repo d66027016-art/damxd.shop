@@ -1,0 +1,42 @@
+__pycache__/
+*.pyc
+.env
+*.db
+commands_log.txt
+*.log
+ccsites.zip
+.vercel
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Firebase / Google credentials
+service-account.json
+firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+google-credentials*.json
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Build
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
